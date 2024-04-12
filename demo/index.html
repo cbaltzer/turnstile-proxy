@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Turnstile Verify</title>
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"></script>
+    </head>
+    <body>
+        <input type="text" id="sitekey" value="1x00000000000000000000AA" size="40"/>
+        <button onclick="setupTurnstile()" id="load_btn" disabled>Check</button>
+
+
+        <div id="example-container"></div>
+        <pre id="response"></pre>
+        <script>
+            const logger = document.getElementById("response");
+
+            turnstile.ready(function () {
+                document.getElementById("load_btn").disabled = false;                
+            });
+
+            function setupTurnstile() {
+                logger.innerText = "";
+                let sitekey = document.getElementById('sitekey').value;
+                turnstile.render('#example-container', {
+                    sitekey: sitekey,
+                    callback: async function(token) {
+                        logger.innerText += `Challenge Success ${token}\n`;
+
+                        let api = await fetch(`http://localhost:8080/api/response.json?token=${token}`);
+                        logger.innerText += `API Status: ${api.status}`;
+                    },
+                    "error-callback": async function(error) {
+                        logger.innerText = `Turnstile error: ${error}`;
+                    }
+                });
+            }
+
+        </script>
+    </body>
+</html>

@@ -2,20 +2,41 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/joho/godotenv"
 )
 
 type Verify struct {
-	Success bool
+	Success  bool
+	Hostname string
+}
+
+func checkHostname(hostname string) bool {
+	allowed := strings.Split(os.Getenv("ALLOWED_HOSTS"), ",")
+	for _, h := range allowed {
+		if strings.Contains(hostname, h) {
+			return true
+		}
+	}
+	return false
+}
+
+func enableCors(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
 	token := r.URL.Query().Get("token")
 	ip := r.Header.Get("CF-Connecting-IP")
@@ -52,14 +73,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if verify.Success {
+		if verify.Success && checkHostname(verify.Hostname) {
 			path := r.URL.Path
 
 			upstreamURL := os.Getenv("UPSTREAM_URL") + path
 
-			fmt.Println(upstreamURL)
+			client := &http.Client{}
+			ureq, err := http.NewRequest("GET", upstreamURL, nil)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 
-			upstream, err := http.Get(upstreamURL)
+			ureq.Header.Add("X-Forwarded-For", ip)
+			upstream, err := client.Do(ureq)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
@@ -74,8 +100,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.Handle("/metrics", promhttp.Handler())
-	http.HandleFunc("/", handler)
+	godotenv.Load()
 
+	http.HandleFunc("/", handler)
 	http.ListenAndServe(":8080", nil)
 }
